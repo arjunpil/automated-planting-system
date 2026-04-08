@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include <Servo.h>
 
 // SA8870C I2C address
 #define SA8870C_ADDR 0x34
@@ -13,11 +14,22 @@
 #define MOTOR_TYPE_N20                    2
 #define MOTOR_TYPE_JGB37_520_12V_110RPM   3
 
-// Motor speed arrays (using motors 3 & 4)
-int8_t car_forward[4]   = {0, 0, -23, -23};
-int8_t car_backword[4]  = {0, 0, 23, 23};
-int8_t car_turnLeft[4]  = {0, 0, 0, -20};
-int8_t car_turnRight[4] = {0, 0, -20, 0};
+Servo myServo;
+
+// Servo control
+int centerAngle = 90;
+int offset = 25;
+
+// Servo flags
+bool servoActive = false;
+bool servoReturning = false;
+unsigned long servoStartTime = 0;
+
+// Motor arrays
+int8_t car_forward[4]   = {0, 0, -40, -40};
+int8_t car_backword[4]  = {0, 0, 40, 40};
+int8_t car_turnLeft[4]  = {0, 0, 0, -40};
+int8_t car_turnRight[4] = {0, 0, -40, 0};
 int8_t car_stop[4]      = {0, 0, 0, 0};
 
 uint8_t MotorType = MOTOR_TYPE_JGB37_520_12V_110RPM;
@@ -31,10 +43,15 @@ void setup() {
 
   Wire.begin();
 
-  Serial.begin(9600);    // USB (Serial Monitor)
-  Serial1.begin(9600);   // Bluetooth on pins 18 (TX1), 19 (RX1)
+  Serial.begin(9600);
+  Serial1.begin(9600);
 
   Serial.println("Bluetooth Tank Ready");
+
+  myServo.attach(9);
+  myServo.write(centerAngle);
+  delay(500);
+  myServo.detach();  // detach after initial position set
 
   WireWriteDataArray(MOTOR_TYPE_ADDR, &MotorType, 1);
   delay(5);
@@ -43,46 +60,73 @@ void setup() {
 
 void loop() {
 
+  // Stage 1: move back counterclockwise
+  if (servoActive && !servoReturning && millis() - servoStartTime >= 600) {
+    while(Serial1.available()) Serial1.read();
+    Serial.println("Returning to center");
+    myServo.write(centerAngle + offset);  // move back counterclockwise
+    servoReturning = true;
+    servoStartTime = millis();  // reset timer for stage 2
+  }
+
+  // Stage 2: done, shut off servo
+  if (servoActive && servoReturning && millis() - servoStartTime >= 600) {
+    while(Serial1.available()) Serial1.read();
+    Serial.println("Servo done");
+    myServo.detach();  // shut off servo signal
+    servoActive = false;
+    servoReturning = false;
+  }
+
   if (Serial1.available()) {
 
     command = Serial1.read();
 
-    Serial.print("Received: ");   // debug to computer
+    Serial.print("Received: ");
     Serial.println(command);
 
-    switch(command) {
+    if (command == 'S' && !servoActive) {
+      Serial.println("Square button pressed");
+      servoActive = true;
+      servoReturning = false;
+      servoStartTime = millis();
+      myServo.attach(9);  // re-attach each time
+      while(Serial1.available()) Serial1.read();
+      Serial.println("Moving to offset");
+      myServo.write(centerAngle - offset);  // clockwise
+    }
 
-      case 'F':   // Forward
-        WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_forward, 4);
-      break;
+    if (!servoActive) {
+      switch(command) {
 
-      case 'B':   // Backward
-        WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_backword, 4);
-      break;
+        case 'F':
+          WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_forward, 4);
+        break;
 
-      case 'L':   // Left
-        WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_turnLeft, 4);
-      break;
+        case 'B':
+          WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_backword, 4);
+        break;
 
-      case 'R':   // Right
-        WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_turnRight, 4);
-      break;
+        case 'L':
+          WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_turnLeft, 4);
+        break;
 
-      case 'S':
-        Serial.println("Square button pressed");
-      break;
+        case 'R':
+          WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_turnRight, 4);
+        break;
 
-      case 'A':
-        Serial.println("Start command");
-      break;
+        case 'A':
+          Serial.println("Start command");
+        break;
 
-      case 'P':
-        Serial.println("Pause command");
-      break;
+        case 'P':
+          Serial.println("Pause command");
+        break;
 
-      case '0':   // Stop
-        WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_stop, 4);
-      break;
+        case '0':
+          WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, car_stop, 4);
+        break;
+      }
     }
   }
 }
