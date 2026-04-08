@@ -1,13 +1,13 @@
 # Automated Planting System
 
 ## Overview
-An automated seed planting system built using an Arduino Mega 2560 and MG90 motor. 
+An automated seed planting system built using an Arduino Mega 2560 and MG996R motor. 
 The system uses a linear actuator mechanism to precisely control seed funneling and 
 release into fertilized soil.
 
 ## Hardware Components
 - Arduino Mega 2560
-- MG996R HIgh Torque Servo 
+- MG996R High Torque Servo 
 - Linear Actuator
 - Motion Sensors
 - Bluetooth Module
